@@ -124,26 +124,26 @@ async function initialSetup(db: DBServiceType) {
 }
 
 const defaultNftPostUp =
-  '/usr/sbin/nft \'delete table ip "wg-easy-{{interface}}"\' 2>/dev/null || true' +
-  '; /usr/sbin/nft \'delete table ip6 "wg-easy-{{interface}}"\' 2>/dev/null || true' +
-  '; /usr/sbin/nft \'delete table inet "wg-easy-{{interface}}"\' 2>/dev/null || true' +
-  '; /usr/sbin/nft \'add table ip "wg-easy-{{interface}}"\' ' +
-  '; /usr/sbin/nft \'add chain ip "wg-easy-{{interface}}" postrouting { type nat hook postrouting priority 100; policy accept; }\'' +
-  '; /usr/sbin/nft \'add rule ip "wg-easy-{{interface}}" postrouting ip saddr {{ipv4Cidr}} oifname "{{device}}" masquerade\'' +
-  '; /usr/sbin/nft \'add table ip6 "wg-easy-{{interface}}"\' ' +
-  '; /usr/sbin/nft \'add chain ip6 "wg-easy-{{interface}}" postrouting { type nat hook postrouting priority 100; policy accept; }\'' +
-  '; /usr/sbin/nft \'add rule ip6 "wg-easy-{{interface}}" postrouting ip6 saddr {{ipv6Cidr}} oifname "{{device}}" masquerade\'' +
-  '; /usr/sbin/nft \'add table inet "wg-easy-{{interface}}"\' ' +
-  '; /usr/sbin/nft \'add chain inet "wg-easy-{{interface}}" input { type filter hook input priority 0; policy accept; }\'' +
-  '; /usr/sbin/nft \'add rule inet "wg-easy-{{interface}}" input udp dport {{port}} accept\'' +
-  '; /usr/sbin/nft \'add chain inet "wg-easy-{{interface}}" forward { type filter hook forward priority 0; policy accept; }\'' +
-  '; /usr/sbin/nft \'add rule inet "wg-easy-{{interface}}" forward iifname "{{interface}}" accept\'' +
-  '; /usr/sbin/nft \'add rule inet "wg-easy-{{interface}}" forward oifname "{{interface}}" accept\'';
+  "/usr/sbin/nft 'delete table ip wg_easy_ip' 2>/dev/null || true" +
+  "; /usr/sbin/nft 'delete table ip6 wg_easy_ip6' 2>/dev/null || true" +
+  "; /usr/sbin/nft 'delete table inet wg_easy_inet' 2>/dev/null || true" +
+  "; /usr/sbin/nft 'add table ip wg_easy_ip' " +
+  "; /usr/sbin/nft 'add chain ip wg_easy_ip postrouting { type nat hook postrouting priority 100; policy accept; }'" +
+  '; /usr/sbin/nft \'add rule ip wg_easy_ip postrouting ip saddr {{ipv4Cidr}} oifname "{{device}}" masquerade\'' +
+  "; /usr/sbin/nft 'add table ip6 wg_easy_ip6' " +
+  "; /usr/sbin/nft 'add chain ip6 wg_easy_ip6 postrouting { type nat hook postrouting priority 100; policy accept; }'" +
+  '; /usr/sbin/nft \'add rule ip6 wg_easy_ip6 postrouting ip6 saddr {{ipv6Cidr}} oifname "{{device}}" masquerade\'' +
+  "; /usr/sbin/nft 'add table inet wg_easy_inet' " +
+  "; /usr/sbin/nft 'add chain inet wg_easy_inet input { type filter hook input priority 0; policy accept; }'" +
+  "; /usr/sbin/nft 'add rule inet wg_easy_inet input udp dport {{port}} accept'" +
+  "; /usr/sbin/nft 'add chain inet wg_easy_inet forward { type filter hook forward priority 0; policy accept; }'" +
+  '; /usr/sbin/nft \'add rule inet wg_easy_inet forward iifname "{{interface}}" accept\'' +
+  '; /usr/sbin/nft \'add rule inet wg_easy_inet forward oifname "{{interface}}" accept\'';
 
 const defaultNftPostDown =
-  '/usr/sbin/nft \'delete table ip "wg-easy-{{interface}}"\' 2>/dev/null || true' +
-  '; /usr/sbin/nft \'delete table ip6 "wg-easy-{{interface}}"\' 2>/dev/null || true' +
-  '; /usr/sbin/nft \'delete table inet "wg-easy-{{interface}}"\' 2>/dev/null || true';
+  "/usr/sbin/nft 'delete table ip wg_easy_ip' 2>/dev/null || true" +
+  "; /usr/sbin/nft 'delete table ip6 wg_easy_ip6' 2>/dev/null || true" +
+  "; /usr/sbin/nft 'delete table inet wg_easy_inet' 2>/dev/null || true";
 
 function defaultIptablesPostUp(iface: string) {
   return `iptables -t nat -A POSTROUTING -s {{ipv4Cidr}} -o {{device}} -j MASQUERADE; iptables -A INPUT -p udp -m udp --dport {{port}} -j ACCEPT; iptables -A FORWARD -i ${iface} -j ACCEPT; iptables -A FORWARD -o ${iface} -j ACCEPT; ip6tables -t nat -A POSTROUTING -s {{ipv6Cidr}} -o {{device}} -j MASQUERADE; ip6tables -A INPUT -p udp -m udp --dport {{port}} -j ACCEPT; ip6tables -A FORWARD -i ${iface} -j ACCEPT; ip6tables -A FORWARD -o ${iface} -j ACCEPT;`;
@@ -178,12 +178,18 @@ async function normalizeInterfaceName(db: DBType) {
       defaultIptablesPostDown(iface),
     ];
 
-    const postUp = defaultPostUps.includes(hooks.postUp)
-      ? defaultNftPostUp
-      : hooks.postUp;
-    const postDown = defaultPostDowns.includes(hooks.postDown)
-      ? defaultNftPostDown
-      : hooks.postDown;
+    const hasBrokenQuotedNftTables = hooks.postUp.includes(
+      '"wg-easy-{{interface}}"'
+    );
+
+    const postUp =
+      defaultPostUps.includes(hooks.postUp) || hasBrokenQuotedNftTables
+        ? defaultNftPostUp
+        : hooks.postUp;
+    const postDown =
+      defaultPostDowns.includes(hooks.postDown) || hasBrokenQuotedNftTables
+        ? defaultNftPostDown
+        : hooks.postDown;
 
     const needsUpdate = postUp !== hooks.postUp || postDown !== hooks.postDown;
 
@@ -203,12 +209,12 @@ async function normalizeInterfaceName(db: DBType) {
 
 async function disableIpv6(db: DBType) {
   const ipv6PostUpMatch =
-    '; /usr/sbin/nft \'delete table ip6 "wg-easy-{{interface}}"\' 2>/dev/null || true' +
-    '; /usr/sbin/nft \'add table ip6 "wg-easy-{{interface}}"\' ' +
-    '; /usr/sbin/nft \'add chain ip6 "wg-easy-{{interface}}" postrouting { type nat hook postrouting priority 100; policy accept; }\'' +
-    '; /usr/sbin/nft \'add rule ip6 "wg-easy-{{interface}}" postrouting ip6 saddr {{ipv6Cidr}} oifname "{{device}}" masquerade\'';
+    "; /usr/sbin/nft 'delete table ip6 wg_easy_ip6' 2>/dev/null || true" +
+    "; /usr/sbin/nft 'add table ip6 wg_easy_ip6' " +
+    "; /usr/sbin/nft 'add chain ip6 wg_easy_ip6 postrouting { type nat hook postrouting priority 100; policy accept; }'" +
+    '; /usr/sbin/nft \'add rule ip6 wg_easy_ip6 postrouting ip6 saddr {{ipv6Cidr}} oifname "{{device}}" masquerade\'';
   const ipv6PostDownMatch =
-    '; /usr/sbin/nft \'delete table ip6 "wg-easy-{{interface}}"\' 2>/dev/null || true';
+    "; /usr/sbin/nft 'delete table ip6 wg_easy_ip6' 2>/dev/null || true";
 
   await db.transaction(async (tx) => {
     const hooks = await tx.query.hooks.findFirst({
