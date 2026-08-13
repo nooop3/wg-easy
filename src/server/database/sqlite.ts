@@ -123,17 +123,18 @@ async function initialSetup(db: DBServiceType) {
   }
 }
 
+const interfaceForwardRule =
+  /(\bip6?tables\s+-(?:A|D)\s+FORWARD\s+-(?:i|o)\s+)\S+(\s+-j\s+ACCEPT;)/g;
+
 /**
- * Replaces hardcoded 'wg0' in the stored iptables hook commands with the
- * actual WG_INTERFACE name. Runs after migration so fresh installs that use a
- * non-default interface get the correct interface name in their PostUp/PostDown
- * rules. Idempotent when WG_INTERFACE=wg0.
+ * Replaces interface names in the stored default iptables hook commands with
+ * WG_INTERFACE. Runs after migration so fresh installs that use a non-default
+ * interface get the correct interface name in their PostUp/PostDown rules.
  */
 async function normalizeInterfaceName(db: DBType) {
   const iface = WG_ENV.WG_INTERFACE;
-  if (iface === 'wg0') return;
 
-  DB_DEBUG(`Normalizing interface name 'wg0' -> '${iface}' in hooks...`);
+  DB_DEBUG(`Normalizing hook interface names to '${iface}'...`);
 
   await db.transaction(async (tx) => {
     const hooks = await tx.query.hooks.findFirst({
@@ -142,19 +143,27 @@ async function normalizeInterfaceName(db: DBType) {
 
     if (!hooks) return;
 
-    const needsUpdate =
-      hooks.postUp.includes('wg0') || hooks.postDown.includes('wg0');
+    const postUp = hooks.postUp.replaceAll(
+      interfaceForwardRule,
+      `$1${iface}$2`
+    );
+    const postDown = hooks.postDown.replaceAll(
+      interfaceForwardRule,
+      `$1${iface}$2`
+    );
+
+    const needsUpdate = postUp !== hooks.postUp || postDown !== hooks.postDown;
 
     if (needsUpdate) {
       await tx
         .update(schema.hooks)
         .set({
-          postUp: hooks.postUp.replaceAll('wg0', iface),
-          postDown: hooks.postDown.replaceAll('wg0', iface),
+          postUp,
+          postDown,
         })
         .where(eq(schema.hooks.id, 'wg0'))
         .execute();
-      DB_DEBUG(`Interface name normalized to '${iface}' in hooks.`);
+      DB_DEBUG(`Hook interface names normalized to '${iface}'.`);
     }
   });
 }

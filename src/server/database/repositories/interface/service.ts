@@ -5,6 +5,7 @@ import { wgInterface } from './schema';
 import type { InterfaceCidrUpdateType, InterfaceUpdateType } from './types';
 
 import { nextIPFromUsedAddresses } from '#server/utils/ip';
+import { WG_ENV } from '#server/utils/config';
 import { client as clientSchema } from '#db/schema';
 import type { DBType } from '#db/sqlite';
 
@@ -47,7 +48,10 @@ export class InterfaceService {
     if (!wgInterface) {
       throw new Error('Interface not found');
     }
-    return wgInterface;
+    return {
+      ...wgInterface,
+      name: WG_ENV.WG_INTERFACE,
+    };
   }
 
   updateKeyPair(privateKey: string, publicKey: string) {
@@ -59,9 +63,13 @@ export class InterfaceService {
   }
 
   update(data: InterfaceUpdateType) {
+    const { name: _name, ...updateData } = data as InterfaceUpdateType & {
+      name?: string;
+    };
+
     return this.#db
       .update(wgInterface)
-      .set(data)
+      .set(updateData)
       .where(eq(wgInterface.name, 'wg0'))
       .execute();
   }
