@@ -18,6 +18,7 @@ RUN apk add --no-cache \
     kmod \
     wireguard-go \
     wireguard-tools
+RUN test -x /usr/sbin/nft
 
 # Use iptables-nft
 RUN update-alternatives --install /usr/sbin/iptables iptables /usr/sbin/iptables-nft 10 --slave /usr/sbin/iptables-restore iptables-restore /usr/sbin/iptables-nft-restore --slave /usr/sbin/iptables-save iptables-save /usr/sbin/iptables-nft-save

@@ -68,6 +68,7 @@ RUN apk add --no-cache \
     kmod \
     wireguard-go \
     wireguard-tools
+RUN test -x /usr/sbin/nft
 
 RUN mkdir -p /etc/amnezia
 RUN ln -s /etc/wireguard /etc/amnezia/amneziawg

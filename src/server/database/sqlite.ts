@@ -123,18 +123,44 @@ async function initialSetup(db: DBServiceType) {
   }
 }
 
-const interfaceForwardRule =
-  /(\bip6?tables\s+-(?:A|D)\s+FORWARD\s+-(?:i|o)\s+)\S+(\s+-j\s+ACCEPT;)/g;
+const defaultNftPostUp =
+  '/usr/sbin/nft \'delete table ip "wg-easy-{{interface}}"\' 2>/dev/null || true' +
+  '; /usr/sbin/nft \'delete table ip6 "wg-easy-{{interface}}"\' 2>/dev/null || true' +
+  '; /usr/sbin/nft \'delete table inet "wg-easy-{{interface}}"\' 2>/dev/null || true' +
+  '; /usr/sbin/nft \'add table ip "wg-easy-{{interface}}"\' ' +
+  '; /usr/sbin/nft \'add chain ip "wg-easy-{{interface}}" postrouting { type nat hook postrouting priority 100; policy accept; }\'' +
+  '; /usr/sbin/nft \'add rule ip "wg-easy-{{interface}}" postrouting ip saddr {{ipv4Cidr}} oifname "{{device}}" masquerade\'' +
+  '; /usr/sbin/nft \'add table ip6 "wg-easy-{{interface}}"\' ' +
+  '; /usr/sbin/nft \'add chain ip6 "wg-easy-{{interface}}" postrouting { type nat hook postrouting priority 100; policy accept; }\'' +
+  '; /usr/sbin/nft \'add rule ip6 "wg-easy-{{interface}}" postrouting ip6 saddr {{ipv6Cidr}} oifname "{{device}}" masquerade\'' +
+  '; /usr/sbin/nft \'add table inet "wg-easy-{{interface}}"\' ' +
+  '; /usr/sbin/nft \'add chain inet "wg-easy-{{interface}}" input { type filter hook input priority 0; policy accept; }\'' +
+  '; /usr/sbin/nft \'add rule inet "wg-easy-{{interface}}" input udp dport {{port}} accept\'' +
+  '; /usr/sbin/nft \'add chain inet "wg-easy-{{interface}}" forward { type filter hook forward priority 0; policy accept; }\'' +
+  '; /usr/sbin/nft \'add rule inet "wg-easy-{{interface}}" forward iifname "{{interface}}" accept\'' +
+  '; /usr/sbin/nft \'add rule inet "wg-easy-{{interface}}" forward oifname "{{interface}}" accept\'';
+
+const defaultNftPostDown =
+  '/usr/sbin/nft \'delete table ip "wg-easy-{{interface}}"\' 2>/dev/null || true' +
+  '; /usr/sbin/nft \'delete table ip6 "wg-easy-{{interface}}"\' 2>/dev/null || true' +
+  '; /usr/sbin/nft \'delete table inet "wg-easy-{{interface}}"\' 2>/dev/null || true';
+
+function defaultIptablesPostUp(iface: string) {
+  return `iptables -t nat -A POSTROUTING -s {{ipv4Cidr}} -o {{device}} -j MASQUERADE; iptables -A INPUT -p udp -m udp --dport {{port}} -j ACCEPT; iptables -A FORWARD -i ${iface} -j ACCEPT; iptables -A FORWARD -o ${iface} -j ACCEPT; ip6tables -t nat -A POSTROUTING -s {{ipv6Cidr}} -o {{device}} -j MASQUERADE; ip6tables -A INPUT -p udp -m udp --dport {{port}} -j ACCEPT; ip6tables -A FORWARD -i ${iface} -j ACCEPT; ip6tables -A FORWARD -o ${iface} -j ACCEPT;`;
+}
+
+function defaultIptablesPostDown(iface: string) {
+  return `iptables -t nat -D POSTROUTING -s {{ipv4Cidr}} -o {{device}} -j MASQUERADE; iptables -D INPUT -p udp -m udp --dport {{port}} -j ACCEPT; iptables -D FORWARD -i ${iface} -j ACCEPT; iptables -D FORWARD -o ${iface} -j ACCEPT; ip6tables -t nat -D POSTROUTING -s {{ipv6Cidr}} -o {{device}} -j MASQUERADE; ip6tables -D INPUT -p udp -m udp --dport {{port}} -j ACCEPT; ip6tables -D FORWARD -i ${iface} -j ACCEPT; ip6tables -D FORWARD -o ${iface} -j ACCEPT;`;
+}
 
 /**
- * Replaces interface names in the stored default iptables hook commands with
- * WG_INTERFACE. Runs after migration so fresh installs that use a non-default
- * interface get the correct interface name in their PostUp/PostDown rules.
+ * Replaces old default iptables hook commands with native nftables commands.
+ * Custom hook text is preserved.
  */
 async function normalizeInterfaceName(db: DBType) {
   const iface = WG_ENV.WG_INTERFACE;
 
-  DB_DEBUG(`Normalizing hook interface names to '${iface}'...`);
+  DB_DEBUG('Normalizing default hook commands...');
 
   await db.transaction(async (tx) => {
     const hooks = await tx.query.hooks.findFirst({
@@ -143,14 +169,21 @@ async function normalizeInterfaceName(db: DBType) {
 
     if (!hooks) return;
 
-    const postUp = hooks.postUp.replaceAll(
-      interfaceForwardRule,
-      `$1${iface}$2`
-    );
-    const postDown = hooks.postDown.replaceAll(
-      interfaceForwardRule,
-      `$1${iface}$2`
-    );
+    const defaultPostUps = [
+      defaultIptablesPostUp('wg0'),
+      defaultIptablesPostUp(iface),
+    ];
+    const defaultPostDowns = [
+      defaultIptablesPostDown('wg0'),
+      defaultIptablesPostDown(iface),
+    ];
+
+    const postUp = defaultPostUps.includes(hooks.postUp)
+      ? defaultNftPostUp
+      : hooks.postUp;
+    const postDown = defaultPostDowns.includes(hooks.postDown)
+      ? defaultNftPostDown
+      : hooks.postDown;
 
     const needsUpdate = postUp !== hooks.postUp || postDown !== hooks.postDown;
 
@@ -163,16 +196,19 @@ async function normalizeInterfaceName(db: DBType) {
         })
         .where(eq(schema.hooks.id, 'wg0'))
         .execute();
-      DB_DEBUG(`Hook interface names normalized to '${iface}'.`);
+      DB_DEBUG('Default hook commands normalized.');
     }
   });
 }
 
 async function disableIpv6(db: DBType) {
-  const iface = WG_ENV.WG_INTERFACE;
-  // This should match the initial value migration after normalizeInterfaceName runs.
-  const postUpMatch = ` ip6tables -t nat -A POSTROUTING -s {{ipv6Cidr}} -o {{device}} -j MASQUERADE; ip6tables -A INPUT -p udp -m udp --dport {{port}} -j ACCEPT; ip6tables -A FORWARD -i ${iface} -j ACCEPT; ip6tables -A FORWARD -o ${iface} -j ACCEPT;`;
-  const postDownMatch = ` ip6tables -t nat -D POSTROUTING -s {{ipv6Cidr}} -o {{device}} -j MASQUERADE; ip6tables -D INPUT -p udp -m udp --dport {{port}} -j ACCEPT; ip6tables -D FORWARD -i ${iface} -j ACCEPT; ip6tables -D FORWARD -o ${iface} -j ACCEPT;`;
+  const ipv6PostUpMatch =
+    '; /usr/sbin/nft \'delete table ip6 "wg-easy-{{interface}}"\' 2>/dev/null || true' +
+    '; /usr/sbin/nft \'add table ip6 "wg-easy-{{interface}}"\' ' +
+    '; /usr/sbin/nft \'add chain ip6 "wg-easy-{{interface}}" postrouting { type nat hook postrouting priority 100; policy accept; }\'' +
+    '; /usr/sbin/nft \'add rule ip6 "wg-easy-{{interface}}" postrouting ip6 saddr {{ipv6Cidr}} oifname "{{device}}" masquerade\'';
+  const ipv6PostDownMatch =
+    '; /usr/sbin/nft \'delete table ip6 "wg-easy-{{interface}}"\' 2>/dev/null || true';
 
   await db.transaction(async (tx) => {
     const hooks = await tx.query.hooks.findFirst({
@@ -183,31 +219,21 @@ async function disableIpv6(db: DBType) {
       throw new Error('Hooks not found');
     }
 
-    if (hooks.postUp.includes(postUpMatch)) {
-      DB_DEBUG('Disabling IPv6 in Post Up hooks...');
+    const postUp = hooks.postUp.replace(ipv6PostUpMatch, '');
+    const postDown = hooks.postDown.replace(ipv6PostDownMatch, '');
+
+    if (postUp !== hooks.postUp || postDown !== hooks.postDown) {
+      DB_DEBUG('Disabling IPv6 in hooks...');
       await tx
         .update(schema.hooks)
         .set({
-          postUp: hooks.postUp.replace(postUpMatch, ''),
-          postDown: hooks.postDown.replace(postDownMatch, ''),
+          postUp,
+          postDown,
         })
         .where(eq(schema.hooks.id, 'wg0'))
         .execute();
     } else {
-      DB_DEBUG('IPv6 Post Up hooks already disabled, skipping...');
-    }
-    if (hooks.postDown.includes(postDownMatch)) {
-      DB_DEBUG('Disabling IPv6 in Post Down hooks...');
-      await tx
-        .update(schema.hooks)
-        .set({
-          postUp: hooks.postUp.replace(postUpMatch, ''),
-          postDown: hooks.postDown.replace(postDownMatch, ''),
-        })
-        .where(eq(schema.hooks.id, 'wg0'))
-        .execute();
-    } else {
-      DB_DEBUG('IPv6 Post Down hooks already disabled, skipping...');
+      DB_DEBUG('IPv6 hooks already disabled, skipping...');
     }
   });
 }
