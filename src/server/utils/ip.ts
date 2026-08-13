@@ -5,6 +5,7 @@ import { stringifyIp } from 'ip-bigint';
 import type { parseCidr } from 'cidr-tools';
 
 import { cacheFunction } from '#server/utils/cache';
+import { WG_ENV } from '#server/utils/config';
 import type { ClientNextIpType } from '#db/repositories/client/types';
 
 type ParsedCidr = ReturnType<typeof parseCidr>;
@@ -104,7 +105,7 @@ function getPrivateInformation() {
   const obj: Record<string, { ipv4: string[]; ipv6: string[] }> = {};
 
   for (const name of interfaceNames) {
-    if (name === 'wg0') {
+    if (name === WG_ENV.WG_INTERFACE) {
       continue;
     }
 

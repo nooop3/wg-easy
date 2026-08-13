@@ -50,6 +50,8 @@ export const WG_ENV = {
   /** If IPv6 should be disabled */
   DISABLE_IPV6: process.env.DISABLE_IPV6 === 'true',
   WG_EXECUTABLE: await detectAwg(),
+  /** WireGuard interface name. Allows running multiple wg-easy instances on the same host. */
+  WG_INTERFACE: process.env.WG_INTERFACE ?? 'wg0',
   DISABLE_VERSION_CHECK: process.env.DISABLE_VERSION_CHECK === 'true',
   /** List of enabled and configured OAuth providers */
   OAUTH_PROVIDERS: oauthProviders,
