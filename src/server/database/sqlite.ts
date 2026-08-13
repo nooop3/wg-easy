@@ -127,21 +127,21 @@ const interfaceForwardRule =
   /(\bip6?tables\s+-(?:A|D)\s+FORWARD\s+-(?:i|o)\s+)\S+(\s+-j\s+ACCEPT;)/g;
 
 const defaultNftIptablesPostUp =
-  '/usr/sbin/iptables-nft -w -t nat -C POSTROUTING --source {{ipv4Cidr}} --out-interface {{device}} -j MASQUERADE 2>/dev/null || /usr/sbin/iptables-nft -w -t nat -A POSTROUTING --source {{ipv4Cidr}} --out-interface {{device}} -j MASQUERADE; ' +
+  '/usr/sbin/iptables-nft -w -t nat -C POSTROUTING --source {{ipv4Cidr}} -j MASQUERADE 2>/dev/null || /usr/sbin/iptables-nft -w -t nat -A POSTROUTING --source {{ipv4Cidr}} -j MASQUERADE; ' +
   '/usr/sbin/iptables-nft -w -C INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT 2>/dev/null || /usr/sbin/iptables-nft -w -A INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT; ' +
   '/usr/sbin/iptables-nft -w -C FORWARD --in-interface {{interface}} -j ACCEPT 2>/dev/null || /usr/sbin/iptables-nft -w -A FORWARD --in-interface {{interface}} -j ACCEPT; ' +
   '/usr/sbin/iptables-nft -w -C FORWARD --out-interface {{interface}} -j ACCEPT 2>/dev/null || /usr/sbin/iptables-nft -w -A FORWARD --out-interface {{interface}} -j ACCEPT; ' +
-  '/usr/sbin/ip6tables-nft -w -t nat -C POSTROUTING --source {{ipv6Cidr}} --out-interface {{device}} -j MASQUERADE 2>/dev/null || /usr/sbin/ip6tables-nft -w -t nat -A POSTROUTING --source {{ipv6Cidr}} --out-interface {{device}} -j MASQUERADE; ' +
+  '/usr/sbin/ip6tables-nft -w -t nat -C POSTROUTING --source {{ipv6Cidr}} -j MASQUERADE 2>/dev/null || /usr/sbin/ip6tables-nft -w -t nat -A POSTROUTING --source {{ipv6Cidr}} -j MASQUERADE; ' +
   '/usr/sbin/ip6tables-nft -w -C INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT; ' +
   '/usr/sbin/ip6tables-nft -w -C FORWARD --in-interface {{interface}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A FORWARD --in-interface {{interface}} -j ACCEPT; ' +
   '/usr/sbin/ip6tables-nft -w -C FORWARD --out-interface {{interface}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A FORWARD --out-interface {{interface}} -j ACCEPT;';
 
 const defaultNftIptablesPostDown =
-  'while /usr/sbin/iptables-nft -w -t nat -D POSTROUTING --source {{ipv4Cidr}} --out-interface {{device}} -j MASQUERADE 2>/dev/null; do :; done; ' +
+  'while /usr/sbin/iptables-nft -w -t nat -D POSTROUTING --source {{ipv4Cidr}} -j MASQUERADE 2>/dev/null; do :; done; ' +
   'while /usr/sbin/iptables-nft -w -D INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT 2>/dev/null; do :; done; ' +
   'while /usr/sbin/iptables-nft -w -D FORWARD --in-interface {{interface}} -j ACCEPT 2>/dev/null; do :; done; ' +
   'while /usr/sbin/iptables-nft -w -D FORWARD --out-interface {{interface}} -j ACCEPT 2>/dev/null; do :; done; ' +
-  'while /usr/sbin/ip6tables-nft -w -t nat -D POSTROUTING --source {{ipv6Cidr}} --out-interface {{device}} -j MASQUERADE 2>/dev/null; do :; done; ' +
+  'while /usr/sbin/ip6tables-nft -w -t nat -D POSTROUTING --source {{ipv6Cidr}} -j MASQUERADE 2>/dev/null; do :; done; ' +
   'while /usr/sbin/ip6tables-nft -w -D INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT 2>/dev/null; do :; done; ' +
   'while /usr/sbin/ip6tables-nft -w -D FORWARD --in-interface {{interface}} -j ACCEPT 2>/dev/null; do :; done; ' +
   'while /usr/sbin/ip6tables-nft -w -D FORWARD --out-interface {{interface}} -j ACCEPT 2>/dev/null; do :; done;';
@@ -212,11 +212,11 @@ async function disableIpv6(db: DBType) {
   // This should match the initial value migration after normalizeInterfaceName runs.
   const postUpMatches = [
     ` ip6tables -t nat -A POSTROUTING -s {{ipv6Cidr}} -o {{device}} -j MASQUERADE; ip6tables -A INPUT -p udp -m udp --dport {{port}} -j ACCEPT; ip6tables -A FORWARD -i ${iface} -j ACCEPT; ip6tables -A FORWARD -o ${iface} -j ACCEPT;`,
-    ` /usr/sbin/ip6tables-nft -w -t nat -C POSTROUTING --source {{ipv6Cidr}} --out-interface {{device}} -j MASQUERADE 2>/dev/null || /usr/sbin/ip6tables-nft -w -t nat -A POSTROUTING --source {{ipv6Cidr}} --out-interface {{device}} -j MASQUERADE; /usr/sbin/ip6tables-nft -w -C INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT; /usr/sbin/ip6tables-nft -w -C FORWARD --in-interface {{interface}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A FORWARD --in-interface {{interface}} -j ACCEPT; /usr/sbin/ip6tables-nft -w -C FORWARD --out-interface {{interface}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A FORWARD --out-interface {{interface}} -j ACCEPT;`,
+    ` /usr/sbin/ip6tables-nft -w -t nat -C POSTROUTING --source {{ipv6Cidr}} -j MASQUERADE 2>/dev/null || /usr/sbin/ip6tables-nft -w -t nat -A POSTROUTING --source {{ipv6Cidr}} -j MASQUERADE; /usr/sbin/ip6tables-nft -w -C INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT; /usr/sbin/ip6tables-nft -w -C FORWARD --in-interface {{interface}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A FORWARD --in-interface {{interface}} -j ACCEPT; /usr/sbin/ip6tables-nft -w -C FORWARD --out-interface {{interface}} -j ACCEPT 2>/dev/null || /usr/sbin/ip6tables-nft -w -A FORWARD --out-interface {{interface}} -j ACCEPT;`,
   ];
   const postDownMatches = [
     ` ip6tables -t nat -D POSTROUTING -s {{ipv6Cidr}} -o {{device}} -j MASQUERADE; ip6tables -D INPUT -p udp -m udp --dport {{port}} -j ACCEPT; ip6tables -D FORWARD -i ${iface} -j ACCEPT; ip6tables -D FORWARD -o ${iface} -j ACCEPT;`,
-    ` while /usr/sbin/ip6tables-nft -w -t nat -D POSTROUTING --source {{ipv6Cidr}} --out-interface {{device}} -j MASQUERADE 2>/dev/null; do :; done; while /usr/sbin/ip6tables-nft -w -D INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT 2>/dev/null; do :; done; while /usr/sbin/ip6tables-nft -w -D FORWARD --in-interface {{interface}} -j ACCEPT 2>/dev/null; do :; done; while /usr/sbin/ip6tables-nft -w -D FORWARD --out-interface {{interface}} -j ACCEPT 2>/dev/null; do :; done;`,
+    ` while /usr/sbin/ip6tables-nft -w -t nat -D POSTROUTING --source {{ipv6Cidr}} -j MASQUERADE 2>/dev/null; do :; done; while /usr/sbin/ip6tables-nft -w -D INPUT --protocol udp --match udp --dport {{port}} -j ACCEPT 2>/dev/null; do :; done; while /usr/sbin/ip6tables-nft -w -D FORWARD --in-interface {{interface}} -j ACCEPT 2>/dev/null; do :; done; while /usr/sbin/ip6tables-nft -w -D FORWARD --out-interface {{interface}} -j ACCEPT 2>/dev/null; do :; done;`,
   ];
 
   await db.transaction(async (tx) => {
